@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "robbie.scratchpad",
+  "name": "ScratchPad",
+  "version": "1.0.0",
+  "author": "Robbie",
+  "license": "MIT",
+  "description": "Always-there scratch pad in the bar. Type ideas and code snippets straight into the panel, paste text or images into it from anywhere, then click any entry to inject it into whatever field you are typing in.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "ScratchPad.qml"
+  },
+  "barWidget": {
+    "displayName": "ScratchPad",
+    "description": "A drop-down scratch pad. Type or paste (text and images) into the box at the top, hit Save, and click a note later to paste it into the active window. Ctrl+Enter saves, Ctrl+V pastes, Esc clears the draft.",
+    "category": "Productivity",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

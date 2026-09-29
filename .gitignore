@@ -1,0 +1,4 @@
+# Quickshell/Omarchy write nothing here, but keep editor/OS noise out.
+*.swp
+*~
+.DS_Store
