@@ -58,9 +58,27 @@ Item {
     return out
   }
 
-  function noteOriginalIndex(i) {
-    var n = root.filteredNotes[i]
-    return root.notes.indexOf(n)
+  // Position of each note within `notes`, keyed by id, so a row in the filtered
+  // list can find its real entry in O(1). This used to be
+  // notes.indexOf(note) — a linear scan that depended on the filtered array
+  // holding the very same object references, and returned a silent -1 if it
+  // ever didn't. Keying on the note's own id is stable across a store reload.
+  readonly property var indexById: {
+    var m = {}
+    for (var i = 0; i < root.notes.length; i++) {
+      var n = root.notes[i]
+      if (n && n.id !== undefined) m[String(n.id)] = i
+    }
+    return m
+  }
+
+  function noteOriginalIndex(note) {
+    if (!note) return -1
+    // Notes written by hand into the JSON may have no id; fall back to the old
+    // identity scan for those rather than resolving them to the wrong entry.
+    if (note.id === undefined) return root.notes.indexOf(note)
+    var i = root.indexById[String(note.id)]
+    return i === undefined ? -1 : i
   }
 
   readonly property string dataPath: Quickshell.env("HOME") + "/.config/omarchy/scratchpad.json"
@@ -218,27 +236,20 @@ Item {
     Util.execDetached("rm -f " + Util.shellQuote(path))
   }
 
+  // Copy the note across and touch only the two fields this form owns. The
+  // previous version rebuilt the object field by field from a hardcoded list,
+  // which silently threw away anything else in the entry — anything a newer
+  // version of the store added, or a field added by hand.
   function updateNote(index, label, text) {
     var list = root.notes.slice()
-    var prev = list[index] || {}
-    if (prev.type === "image") {
-      list[index] = {
-        id: prev.id,
-        label: label,
-        type: "image",
-        mime: prev.mime,
-        path: prev.path,
-        createdAt: prev.createdAt
-      }
-    } else {
-      list[index] = {
-        id: prev.id,
-        label: label,
-        type: "text",
-        text: text,
-        createdAt: prev.createdAt
-      }
-    }
+    var prev = list[index]
+    if (!prev) return
+    var next = {}
+    for (var key in prev) next[key] = prev[key]
+    next.label = label
+    if (next.type === "image") delete next.text
+    else next.text = text
+    list[index] = next
     root.notes = list
     root.save()
   }
@@ -335,11 +346,12 @@ Item {
       return
     }
     var imageMime = root.pickImageMime(clean)
-    if (imageMime && (root.pendingImagePaste || !root.hasTextMime(clean))) {
+    var hasText = root.hasTextMime(clean)
+    if (imageMime && (root.pendingImagePaste || !hasText)) {
       root.readClipboardImage(imageMime)
       return
     }
-    if (!root.hasTextMime(clean)) {
+    if (!hasText) {
       root.flash("No text or image on the clipboard")
       return
     }
@@ -438,13 +450,18 @@ Item {
 
   // ---------------------------------------------------------------- heights --
 
-  function listContentHeight() {
+  // A property rather than a function: this feeds both the panel's height and
+  // the list's Layout height, and the panel's binding re-evaluates on every
+  // frame of the editor's growth animation. As a binding it is computed once
+  // per change in notes or filter instead of once per evaluation per frame.
+  readonly property int listContentH: {
+    var rows = root.filteredNotes
     var h = 0
-    for (var i = 0; i < root.filteredNotes.length; i++) {
-      var n = root.filteredNotes[i]
+    for (var i = 0; i < rows.length; i++) {
+      var n = rows[i]
       h += (n && n.type === "image" ? Style.space(88) : Style.space(48))
     }
-    h += Math.max(0, root.filteredNotes.length - 1) * Style.space(4)
+    h += Math.max(0, rows.length - 1) * Style.space(4)
     return h
   }
 
@@ -458,7 +475,7 @@ Item {
     h += root.sepH               // separator
     h += root.searchRowH         // search + clear all
     h += Style.space(10)
-    h += Math.min(root.listContentHeight(), root.maxListHeight)
+    h += Math.min(root.listContentH, root.maxListHeight)
     h += Style.space(8)
     return h
   }
@@ -895,7 +912,7 @@ Item {
         Item {
           Layout.fillWidth: true
           Layout.fillHeight: true
-          Layout.preferredHeight: Math.min(root.listContentHeight(), root.maxListHeight)
+          Layout.preferredHeight: Math.min(root.listContentH, root.maxListHeight)
           Layout.topMargin: Style.space(2)
           clip: true
 
@@ -906,7 +923,11 @@ Item {
             contentWidth: width
             contentHeight: listColumn.height
             boundsBehavior: Flickable.StopAtBounds
-            onContentYChanged: root.scrollEpoch++
+            // scrollEpoch exists purely to re-run hoverOrigin's mapFromItem so
+            // the floating preview keeps tracking its row. Only worth bumping
+            // while a preview is actually up — otherwise every flick of the
+            // list writes a property and re-evaluates that binding for nothing.
+            onContentYChanged: if (root.hoverPreviewPath !== "") root.scrollEpoch++
 
             Column {
               id: listColumn
@@ -1039,7 +1060,7 @@ Item {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onContainsMouseChanged: if (containsMouse) root.hoverIndex = index
-                    onClicked: root.injectNote(root.noteOriginalIndex(index))
+                    onClicked: root.injectNote(root.noteOriginalIndex(modelData))
                   }
 
                   // Copy / edit / delete sit above the row so their clicks win.
@@ -1074,7 +1095,7 @@ Item {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onEntered: root.hoverIndex = index
-                        onClicked: root.copyNote(root.noteOriginalIndex(index))
+                        onClicked: root.copyNote(root.noteOriginalIndex(modelData))
                       }
                     }
 
@@ -1101,7 +1122,7 @@ Item {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onEntered: root.hoverIndex = index
-                        onClicked: root.editNote(root.noteOriginalIndex(index))
+                        onClicked: root.editNote(root.noteOriginalIndex(modelData))
                       }
                     }
 
@@ -1127,7 +1148,7 @@ Item {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onEntered: root.hoverIndex = index
-                        onClicked: root.deleteNote(root.noteOriginalIndex(index))
+                        onClicked: root.deleteNote(root.noteOriginalIndex(modelData))
                       }
                     }
                   }
@@ -1334,6 +1355,5 @@ Item {
         draftEdit.forceActiveFocus()
       })
     }
-
   }
 }
