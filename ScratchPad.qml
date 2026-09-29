@@ -72,16 +72,42 @@ Item {
   // below can never drift apart.
   readonly property int headerH: Style.space(32)
   readonly property int sepH: 1
-  readonly property int editorH: Style.space(120)
   readonly property int toolbarH: Style.space(32)
   readonly property int searchRowH: Style.space(36)
 
-  // Panel cap. Leave room for header + editor + toolbar + search + padding so
-  // the list scrolls instead of growing the card.
+  // The draft box is the only part of the panel that changes size. It starts
+  // compact and grows to fit whatever is in it, up to a cap; past the cap the
+  // TextEdit scrolls internally instead of the card growing forever. Because
+  // it is a plain property rather than a binding, it can carry a Behavior and
+  // ease into place instead of snapping on every keystroke.
+  readonly property int editorPad: Style.space(8) * 2
+  readonly property int editorMinH: Style.space(56)
+  readonly property int editorMaxH: Style.space(190)
+  property int editorH: Style.space(56)
+
+  Behavior on editorH {
+    NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+  }
+
+  // Re-measure the draft. Driven from onTextChanged and from the width change
+  // that re-wraps the text, because a wrapped document's height depends on its
+  // width — contentHeight is a document measurement, so it does not depend on
+  // the editor's own height and this cannot feed back into itself.
+  function syncEditorHeight() {
+    var wanted = Math.ceil(draftEdit.contentHeight) + root.editorPad + Style.space(2)
+    root.editorH = Math.max(root.editorMinH, Math.min(root.editorMaxH, wanted))
+  }
+
+  // The list yields room to the draft as it grows, so a long note never pushes
+  // the card off the screen: whatever the editor takes above its resting
+  // height comes straight back out of the list. listCap is how tall the list
+  // may be when the draft is empty, and maxListHeight is that budget after the
+  // editor has taken its share.
+  readonly property int listCap: Style.space(180)
+  readonly property int listFloor: Style.space(72)
   readonly property int maxListHeight: Math.max(
-    Style.space(120),
-    Style.space(560) - (headerH + sepH + editorH + Style.space(8) + toolbarH + Style.space(12)
-      + sepH + searchRowH + Style.space(10) + Style.space(8)))
+    listFloor,
+    listCap - Math.max(0, root.editorH - root.editorMinH))
 
   // ------------------------------------------------------------------ text --
 
@@ -383,6 +409,7 @@ Item {
   function resetDraft() {
     root.editingIndex = -1
     root.draftText = ""
+    root.syncEditorHeight()
   }
 
   function editNote(index) {
@@ -392,6 +419,9 @@ Item {
     root.draftText = entry.type === "image" ? "" : String(entry.text || "")
     draftEdit.forceActiveFocus()
     draftEdit.cursorPosition = draftEdit.text.length
+    // The text binding has landed by now, so this settles on the loaded note's
+    // real height rather than animating up from the collapsed minimum.
+    Qt.callLater(root.syncEditorHeight)
   }
 
   function open() { panelController.show() }
@@ -441,6 +471,9 @@ Item {
     } else {
       root.resetDraft()
       root.ensureMediaDir()
+      // Layout of the notepad is only meaningful once the card has its final
+      // width, so measure after the panel has opened rather than before.
+      Qt.callLater(root.syncEditorHeight)
     }
   }
 
@@ -532,7 +565,10 @@ Item {
     open: root.opened
     focusTarget: draftEdit
     contentWidth: panel.fittedContentWidth(root.panelContentWidth)
-    contentHeight: panel.fittedContentHeight(Math.min(Style.space(560), root.contentHeightFor()))
+    // No hard pixel cap of our own: fittedContentHeight already clamps to the
+    // space actually available under the bar, and contentHeightFor() now sizes
+    // itself from the draft and the list rather than from a fixed budget.
+    contentHeight: panel.fittedContentHeight(root.contentHeightFor())
 
     Item {
       id: panelContent
@@ -631,7 +667,15 @@ Item {
               selectByMouse: true
               clip: true
               text: root.draftText
-              onTextChanged: root.draftText = text
+              onTextChanged: {
+                root.draftText = text
+                root.syncEditorHeight()
+              }
+
+              // A wrapped document re-flows on width change, so the height that
+              // fits it changes too. Cheaper to trust the new width than to
+              // re-measure on every keystroke from here.
+              onWidthChanged: root.syncEditorHeight()
 
               // Keys handlers run before TextEdit's own handling and the event
               // arrives already accepted, so every unhandled key has to be
@@ -1208,5 +1252,28 @@ Item {
       cursorShape: Qt.PointingHandCursor
       onClicked: clearBtn.clicked()
     }
+  }
+
+  // KeyboardPanel ships no IpcHandler of its own, but every built-in panel
+  // exposes one under its plugin id. Matching that means the ScratchPad can be
+  // driven from a keybind or the CLI the same way any other panel can:
+  //   qs ipc call robbie.scratchpad toggle
+  IpcHandler {
+    target: "robbie.scratchpad"
+
+    function open() { root.open() }
+    function close() { root.close() }
+    function toggle() { root.toggle() }
+
+    // Focus the draft and start a new note. Not named `new`, which is a
+    // reserved word in the JS dialect QML parses.
+    function compose() {
+      root.open()
+      Qt.callLater(function() {
+        root.resetDraft()
+        draftEdit.forceActiveFocus()
+      })
+    }
+
   }
 }
