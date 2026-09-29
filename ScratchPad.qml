@@ -673,6 +673,14 @@ Item {
               clip: true
               background: Rectangle { color: "transparent" }
 
+              // `AsNeeded` alone is not enough here: this Qt build has no
+              // `implicitVisible`, so the framework never actually hides the
+              // bar and it sits there at full opacity even with nothing to
+              // scroll. size reaches 1.0 exactly when the content fits, so
+              // that is what the handle keys off. Only the two properties are
+              // overridden rather than supplying our own ScrollBar: declaring
+              // a whole instance here loses the attached-property sizing and
+              // the handle collapses to zero height.
               ScrollBar.vertical.policy: ScrollBar.AsNeeded
               ScrollBar.vertical.contentItem: Rectangle {
                 implicitWidth: Style.space(4)
@@ -682,7 +690,10 @@ Item {
                   : draftScrollView.ScrollBar.vertical.hovered
                     ? Util.alpha(Color.popups.text, 0.7)
                     : Util.alpha(Color.popups.text, 0.4)
-                Behavior on color { ColorAnimation { duration: 120 } }
+                opacity: draftScrollView.ScrollBar.vertical.size < 1 ? 1 : 0
+                Behavior on opacity {
+                  NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                }
               }
 
               // The TextEdit is sized to its own content, so it has no scroll

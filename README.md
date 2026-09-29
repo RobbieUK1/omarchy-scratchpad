@@ -58,10 +58,12 @@ in height comes out of the list below, so the panel itself stays the same size
 and doesn't jump around while you write.
 
 Once the text passes roughly 13 lines the box stops growing and starts
-scrolling instead, with a slim scrollbar down the right edge so there's no
-mystery about how much is left. Scroll it with the wheel or by dragging the
-bar. The three numbers behind this are `editorMinH`, `editorMaxH` and
-`listCap` near the top of `ScratchPad.qml` if you want to tune them.
+scrolling instead. A slim scrollbar appears down the right edge, but only while
+there's actually something to scroll to — it fades out entirely when the text
+fits, so a short note leaves no bar behind. Scroll with the wheel or by
+dragging the bar. The three numbers behind this are `editorMinH`,
+`editorMaxH` and `listCap` near the top of `ScratchPad.qml` if you want to
+tune them.
 
 ### Opening it from the keyboard
 
