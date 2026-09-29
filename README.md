@@ -50,17 +50,18 @@ A note's title is taken from its first non-empty line, so notes stay scannable
 in the list. Multi-line text (code, shell one-liners, a command with flags) is
 kept verbatim and rendered with its own line breaks intact.
 
-### The box grows as you type
+### The box grows as you type, then scrolls
 
 The notepad starts small — a few lines — and expands to fit whatever you put in
 it, easing open over about 120ms. Clear it and it shrinks back. What it takes
 in height comes out of the list below, so the panel itself stays the same size
 and doesn't jump around while you write.
 
-Once the text passes roughly 12 lines the box stops growing and starts
-scrolling instead, which keeps the panel on screen. Those three numbers are
-`editorMinH`, `editorMaxH` and `listCap` near the top of `ScratchPad.qml` if
-you want to tune them.
+Once the text passes roughly 13 lines the box stops growing and starts
+scrolling instead, with a slim scrollbar down the right edge so there's no
+mystery about how much is left. Scroll it with the wheel or by dragging the
+bar. The three numbers behind this are `editorMinH`, `editorMaxH` and
+`listCap` near the top of `ScratchPad.qml` if you want to tune them.
 
 ### Opening it from the keyboard
 

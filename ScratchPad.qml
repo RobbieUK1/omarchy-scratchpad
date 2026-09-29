@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
@@ -82,7 +83,8 @@ Item {
   // ease into place instead of snapping on every keystroke.
   readonly property int editorPad: Style.space(8) * 2
   readonly property int editorMinH: Style.space(56)
-  readonly property int editorMaxH: Style.space(190)
+  // Roughly 13 lines before the box stops growing and the scrollbar takes over.
+  readonly property int editorMaxH: Style.space(240)
   property int editorH: Style.space(56)
 
   Behavior on editorH {
@@ -656,17 +658,63 @@ Item {
               elide: Text.ElideRight
             }
 
-            TextEdit {
-              id: draftEdit
+            // A bare TextEdit cannot be scrolled from here: this build exposes
+            // neither `flickable` nor `contentY`, so an attached ScrollBar has
+            // nothing to bind to and silently reports "nothing to scroll".
+            // A ScrollView owns the flickable and keeps the TextEdit as a
+            // normal focusable, key-handling child, so nothing else changes.
+            ScrollView {
+              id: draftScrollView
               anchors.fill: parent
               anchors.margins: Style.space(8)
-              color: Color.popups.text
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.body
-              wrapMode: TextEdit.Wrap
-              selectByMouse: true
+              // Right margin is deeper to leave the scrollbar its own lane, so
+              // a long wrapped line never runs underneath it.
+              anchors.rightMargin: Style.space(16)
               clip: true
-              text: root.draftText
+              background: Rectangle { color: "transparent" }
+
+              ScrollBar.vertical.policy: ScrollBar.AsNeeded
+              ScrollBar.vertical.contentItem: Rectangle {
+                implicitWidth: Style.space(4)
+                radius: width / 2
+                color: draftScrollView.ScrollBar.vertical.pressed
+                  ? Color.popups.text
+                  : draftScrollView.ScrollBar.vertical.hovered
+                    ? Util.alpha(Color.popups.text, 0.7)
+                    : Util.alpha(Color.popups.text, 0.4)
+                Behavior on color { ColorAnimation { duration: 120 } }
+              }
+
+              // The TextEdit is sized to its own content, so it has no scroll
+              // range of its own and cannot be relied on to pass a wheel event
+              // up to the flickable beneath it. Drive the flickable here
+              // instead and accept the event, so the wheel is handled exactly
+              // once. Same shape as the clock panel's month grid.
+              WheelHandler {
+                target: null
+                onWheel: function(event) {
+                  var fl = draftScrollView.contentItem
+                  if (!fl || event.angleDelta.y === 0) return
+                  var maxY = Math.max(0, fl.contentHeight - fl.height)
+                  if (maxY <= 0) return
+                  var next = fl.contentY - event.angleDelta.y * 0.2
+                  next = Math.max(0, Math.min(maxY, next))
+                  if (next !== fl.contentY) {
+                    fl.contentY = next
+                    event.accepted = true
+                  }
+                }
+              }
+
+              TextEdit {
+                id: draftEdit
+                color: Color.popups.text
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.body
+                wrapMode: TextEdit.Wrap
+                selectByMouse: true
+                text: root.draftText
+
               onTextChanged: {
                 root.draftText = text
                 root.syncEditorHeight()
@@ -706,6 +754,7 @@ Item {
                   handled = true
                 }
                 event.accepted = handled
+              }
               }
             }
           }
